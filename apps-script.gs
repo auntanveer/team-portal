@@ -54,12 +54,13 @@ function doGet(e) {
     const action    = e.parameter.action;
     const projectId = e.parameter.projectId;
 
-    if (action === 'getProjects')     return ok(getProjects());
-    if (action === 'getProject')      return ok(getProject(projectId));
-    if (action === 'getIssues')       return ok(getIssues(projectId));
-    if (action === 'getNotes')        return ok(getNotes(projectId));
-    if (action === 'getReportData')   return ok(getReportData());
+    if (action === 'getProjects')      return ok(getProjects());
+    if (action === 'getProject')       return ok(getProject(projectId));
+    if (action === 'getIssues')        return ok(getIssues(projectId));
+    if (action === 'getNotes')         return ok(getNotes(projectId));
+    if (action === 'getReportData')    return ok(getReportData());
     if (action === 'getDeletedCounts') return ok(getDeletedCounts());
+    if (action === 'getDeletedItems')  return ok(getDeletedItems());
     return err('Unknown action: ' + action);
   } catch(e) {
     return err(e.message);
@@ -72,14 +73,16 @@ function doPost(e) {
     const body = JSON.parse(e.postData.contents);
     const { action, id, projectId, data, text } = body;
 
-    if (action === 'addProject')    return ok(addProject(data));
-    if (action === 'updateProject') return ok(updateProject(id, data));
-    if (action === 'deleteProject') return ok(deleteProject(id));
-    if (action === 'addIssue')      return ok(addIssue(projectId, data));
-    if (action === 'updateIssue')   return ok(updateIssue(projectId, id, data));
-    if (action === 'deleteIssue')   return ok(deleteIssue(projectId, id));
-    if (action === 'addNote')       return ok(addNote(projectId, text));
-    if (action === 'deleteNote')    return ok(deleteNote(projectId, id));
+    if (action === 'addProject')     return ok(addProject(data));
+    if (action === 'updateProject')  return ok(updateProject(id, data));
+    if (action === 'deleteProject')  return ok(deleteProject(id));
+    if (action === 'restoreProject') return ok(restoreProject(id));
+    if (action === 'addIssue')       return ok(addIssue(projectId, data));
+    if (action === 'updateIssue')    return ok(updateIssue(projectId, id, data));
+    if (action === 'deleteIssue')    return ok(deleteIssue(projectId, id));
+    if (action === 'restoreIssue')   return ok(restoreIssue(projectId, id));
+    if (action === 'addNote')        return ok(addNote(projectId, text));
+    if (action === 'deleteNote')     return ok(deleteNote(projectId, id));
     return err('Unknown action: ' + action);
   } catch(e) {
     return err(e.message);
@@ -205,6 +208,64 @@ function getDeletedCounts() {
   const projects  = projData.slice(1).filter(r => r[0] && String(r[5]) === 'deleted').length;
   const issues    = issueData.slice(1).filter(r => r[0] && String(r[4]) === 'deleted').length;
   return { projects, issues };
+}
+
+function getDeletedItems() {
+  const projData  = getSheet('Projects').getDataRange().getValues();
+  const issueData = getSheet('Issues').getDataRange().getValues();
+
+  const projectNames = {};
+  projData.slice(1).forEach(r => { if (r[0]) projectNames[String(r[0])] = String(r[1]); });
+
+  const projects = projData.slice(1)
+    .filter(r => r[0] && String(r[5]) === 'deleted')
+    .map(rowToProject);
+
+  const issues = issueData.slice(1)
+    .filter(r => r[0] && String(r[4]) === 'deleted')
+    .map(row => {
+      const issue = rowToIssue(row);
+      issue.projectName = projectNames[issue.projectId] || 'Unknown Project';
+      return issue;
+    });
+
+  return { projects, issues };
+}
+
+function restoreProject(projectId) {
+  const projSheet  = getSheet('Projects');
+  const issueSheet = getSheet('Issues');
+
+  const projRows = projSheet.getDataRange().getValues();
+  for (let i = 1; i < projRows.length; i++) {
+    if (String(projRows[i][0]) === projectId) {
+      projSheet.getRange(i + 1, 6).setValue('active');
+      break;
+    }
+  }
+
+  const issueRows = issueSheet.getDataRange().getValues();
+  for (let i = 1; i < issueRows.length; i++) {
+    if (String(issueRows[i][1]) === projectId && String(issueRows[i][4]) === 'deleted') {
+      issueSheet.getRange(i + 1, 5).setValue('open');
+    }
+  }
+
+  updateProjectCounts(projectId);
+  return { id: projectId };
+}
+
+function restoreIssue(projectId, issueId) {
+  const sheet = getSheet('Issues');
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === issueId && String(rows[i][1]) === projectId) {
+      sheet.getRange(i + 1, 5).setValue('open');
+      updateProjectCounts(projectId);
+      return { id: issueId };
+    }
+  }
+  throw new Error('Issue not found: ' + issueId);
 }
 
 function updateProjectCounts(projectId) {

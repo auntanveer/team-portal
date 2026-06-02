@@ -49,9 +49,10 @@
         <div class="dash-stat-value" id="ds-resolved">—</div>
         <div class="dash-stat-label">Resolved Issues</div>
       </div>
-      <div class="dash-stat grey">
+      <div class="dash-stat grey dash-stat-clickable" id="ds-deleted-tile" title="View deleted items">
         <div class="dash-stat-value" id="ds-deleted">—</div>
         <div class="dash-stat-label">Deleted</div>
+        <div class="dash-stat-hint">View &rarr;</div>
       </div>
     </div>
 
@@ -297,6 +298,23 @@
         <canvas id="chart-duration"></canvas>
       </div>
     </div>
+  </div>
+</section>
+
+<!-- ── View: Trash ─────────────────────────────────────────────────────────── -->
+<section class="view" id="view-trash">
+  <div class="page">
+    <div class="back-row">
+      <button class="btn btn-ghost btn-sm" id="btn-back-from-trash">&#8592; Back</button>
+    </div>
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Deleted Items</h1>
+        <p class="page-subtitle">Restore anything deleted by mistake</p>
+      </div>
+      <button class="btn btn-ghost" id="btn-refresh-trash">&#8635; Refresh</button>
+    </div>
+    <div id="trash-content"><div class="loading">Loading…</div></div>
   </div>
 </section>
 

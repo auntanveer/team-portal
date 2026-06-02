@@ -87,3 +87,15 @@ async function getReportData() {
 async function getDeletedCounts() {
   return apiGet({ action: 'getDeletedCounts' });
 }
+
+async function getDeletedItems() {
+  return apiGet({ action: 'getDeletedItems' });
+}
+
+async function restoreProject(projectId) {
+  return apiPost({ action: 'restoreProject', id: projectId });
+}
+
+async function restoreIssue(projectId, issueId) {
+  return apiPost({ action: 'restoreIssue', projectId, id: issueId });
+}

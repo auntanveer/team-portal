@@ -427,6 +427,65 @@ function confirmDeleteIssue(projectId, issueId) {
   });
 }
 
+// ─── Trash ────────────────────────────────────────────────────────────────────
+async function loadTrash() {
+  showView('trash');
+  document.getElementById('trash-content').innerHTML = '<div class="loading">Loading deleted items…</div>';
+  try {
+    const { projects, issues } = await getDeletedItems();
+    renderTrash(projects, issues);
+  } catch (err) {
+    document.getElementById('trash-content').innerHTML = '<div class="loading">Failed to load.</div>';
+    console.error(err);
+  }
+}
+
+function renderTrash(projects, issues) {
+  const wrap = document.getElementById('trash-content');
+
+  if (projects.length === 0 && issues.length === 0) {
+    wrap.innerHTML = `
+      <div class="empty-state" style="padding:3rem;">
+        <span class="empty-icon">&#128465;</span>
+        <p>No deleted items. The trash is empty.</p>
+      </div>`;
+    return;
+  }
+
+  const projectsHtml = projects.length === 0 ? '' : `
+    <div class="trash-section">
+      <h2 class="trash-section-title">Deleted Projects <span class="trash-count">${projects.length}</span></h2>
+      ${projects.map(p => `
+        <div class="trash-card">
+          <div class="trash-card-info">
+            <span class="trash-card-name">${escapeHtml(p.name)}</span>
+            ${p.description ? `<span class="trash-card-meta">${escapeHtml(p.description)}</span>` : ''}
+            <span class="trash-card-meta">&#128197; ${formatDate(p.startDate) || 'No start'} ${p.endDate ? '→ ' + formatDate(p.endDate) : ''}</span>
+          </div>
+          <button class="btn btn-ghost btn-sm btn-restore-project" data-id="${p.id}">&#10227; Restore</button>
+        </div>`).join('')}
+    </div>`;
+
+  const issuesHtml = issues.length === 0 ? '' : `
+    <div class="trash-section">
+      <h2 class="trash-section-title">Deleted Issues <span class="trash-count">${issues.length}</span></h2>
+      ${issues.map(i => `
+        <div class="trash-card">
+          <div class="trash-card-info">
+            <span class="trash-card-name">${escapeHtml(i.title)}</span>
+            <span class="trash-card-meta">Project: ${escapeHtml(i.projectName)}</span>
+            ${i.description ? `<span class="trash-card-meta">${escapeHtml(i.description)}</span>` : ''}
+          </div>
+          <div style="display:flex;gap:.4rem;align-items:center;flex-shrink:0;">
+            <span class="badge badge-${i.priority || 'medium'}">${(i.priority||'medium').charAt(0).toUpperCase()+(i.priority||'medium').slice(1)}</span>
+            <button class="btn btn-ghost btn-sm btn-restore-issue" data-id="${i.id}" data-project-id="${i.projectId}">&#10227; Restore</button>
+          </div>
+        </div>`).join('')}
+    </div>`;
+
+  wrap.innerHTML = projectsHtml + issuesHtml;
+}
+
 // ─── Issues Report ────────────────────────────────────────────────────────────
 async function loadIssuesReport() {
   showView('issues-report');
@@ -692,6 +751,35 @@ document.addEventListener('DOMContentLoaded', () => {
   // Issue form cancel
   document.getElementById('btn-cancel-issue').addEventListener('click', () => loadProjectDetail(state.currentProjectId));
   document.getElementById('btn-cancel-issue-2').addEventListener('click', () => loadProjectDetail(state.currentProjectId));
+
+  // Trash
+  document.getElementById('ds-deleted-tile').addEventListener('click', loadTrash);
+  document.getElementById('btn-back-from-trash').addEventListener('click', loadDashboard);
+  document.getElementById('btn-refresh-trash').addEventListener('click', loadTrash);
+
+  document.getElementById('trash-content').addEventListener('click', async e => {
+    if (e.target.matches('.btn-restore-project')) {
+      const id  = e.target.dataset.id;
+      const btn = e.target;
+      btn.textContent = 'Restoring…'; btn.disabled = true;
+      try {
+        await restoreProject(id);
+        showToast('Project restored');
+        loadTrash();
+      } catch (err) { showToast('Error: ' + err.message, 'error'); btn.textContent = '↺ Restore'; btn.disabled = false; }
+    }
+    if (e.target.matches('.btn-restore-issue')) {
+      const id  = e.target.dataset.id;
+      const pid = e.target.dataset.projectId;
+      const btn = e.target;
+      btn.textContent = 'Restoring…'; btn.disabled = true;
+      try {
+        await restoreIssue(pid, id);
+        showToast('Issue restored');
+        loadTrash();
+      } catch (err) { showToast('Error: ' + err.message, 'error'); btn.textContent = '↺ Restore'; btn.disabled = false; }
+    }
+  });
 
   // Issues Report
   document.getElementById('btn-refresh-issues-report').addEventListener('click', loadIssuesReport);
