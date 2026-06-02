@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Team Portal</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ── Navigation ──────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="nav-inner">
+    <span class="nav-brand">&#9670; Team Portal</span>
+    <div class="nav-links">
+      <a href="#dashboard" data-view="dashboard" class="active">Projects</a>
+      <a href="#reports" data-view="reports">Reports</a>
+    </div>
+    <button class="btn btn-primary" id="btn-new-project">+ New Project</button>
+  </div>
+</nav>
+
+<!-- ── View: Dashboard ─────────────────────────────────────────────────────── -->
+<section class="view active" id="view-dashboard">
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Projects</h1>
+        <p class="page-subtitle">All team projects in one place</p>
+      </div>
+    </div>
+    <div class="toolbar">
+      <div class="search-wrap">
+        <span class="search-icon">&#128269;</span>
+        <input type="text" id="search-input" placeholder="Search projects…">
+      </div>
+      <select class="filter-select" id="status-filter">
+        <option value="">All Status</option>
+        <option value="active">Active</option>
+        <option value="completed">Completed</option>
+        <option value="on-hold">On Hold</option>
+      </select>
+      <span class="count-badge" id="count-badge"></span>
+    </div>
+    <div class="projects-grid" id="projects-grid">
+      <div class="loading">Loading projects…</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── View: Project Detail ────────────────────────────────────────────────── -->
+<section class="view" id="view-project-detail">
+  <div class="page">
+    <div class="back-row">
+      <button class="btn btn-ghost btn-sm" id="btn-back-to-dashboard">&#8592; Back</button>
+    </div>
+    <div class="detail-header" id="detail-header">
+      <!-- rendered by JS -->
+    </div>
+    <div class="issues-header">
+      <h2 style="font-size:1.1rem;font-weight:700;">Issues</h2>
+      <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
+        <div class="filter-tabs" id="issue-filter-tabs">
+          <button class="filter-tab active" data-filter="all">All</button>
+          <button class="filter-tab" data-filter="open">Open</button>
+          <button class="filter-tab" data-filter="resolved">Resolved</button>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-add-issue">+ Add Issue</button>
+      </div>
+    </div>
+    <div id="issues-list">
+      <div class="loading">Loading issues…</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── View: Project Form ──────────────────────────────────────────────────── -->
+<section class="view" id="view-project-form">
+  <div class="page">
+    <div class="back-row">
+      <button class="btn btn-ghost btn-sm" id="btn-cancel-project">&#8592; Cancel</button>
+    </div>
+    <h1 class="page-title" id="project-form-title" style="margin-bottom:1.5rem;">New Project</h1>
+    <div class="form-card">
+      <form id="project-form" novalidate>
+        <input type="hidden" id="project-form-id">
+        <div class="form-group">
+          <label for="f-name">Project Name</label>
+          <input type="text" id="f-name" name="name" placeholder="e.g. Website Redesign" required>
+        </div>
+        <div class="form-group">
+          <label for="f-description">Description <span class="hint">(optional)</span></label>
+          <textarea id="f-description" name="description" placeholder="What is this project about?"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="f-startDate">Start Date</label>
+            <input type="date" id="f-startDate" name="startDate">
+          </div>
+          <div class="form-group">
+            <label for="f-endDate">End Date <span class="hint">(optional)</span></label>
+            <input type="date" id="f-endDate" name="endDate">
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="f-status">Status</label>
+          <select id="f-status" name="status">
+            <option value="active">Active</option>
+            <option value="on-hold">On Hold</option>
+            <option value="completed">Completed</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="f-resources">Team Members <span class="hint">(comma-separated)</span></label>
+          <input type="text" id="f-resources" name="resources" placeholder="e.g. Alice, Bob, Carol">
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save Project</button>
+          <button type="button" class="btn btn-ghost" id="btn-cancel-project-2">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ── View: Issue Form ────────────────────────────────────────────────────── -->
+<section class="view" id="view-issue-form">
+  <div class="page">
+    <div class="back-row">
+      <button class="btn btn-ghost btn-sm" id="btn-cancel-issue">&#8592; Cancel</button>
+    </div>
+    <h1 class="page-title" id="issue-form-title" style="margin-bottom:1.5rem;">New Issue</h1>
+    <div class="form-card">
+      <form id="issue-form" novalidate>
+        <input type="hidden" id="issue-form-id">
+        <input type="hidden" id="issue-form-project-id">
+        <div class="form-group">
+          <label for="fi-title">Issue Title</label>
+          <input type="text" id="fi-title" name="title" placeholder="e.g. Login button not working" required>
+        </div>
+        <div class="form-group">
+          <label for="fi-description">Description <span class="hint">(optional)</span></label>
+          <textarea id="fi-description" name="description" placeholder="Describe the issue in detail…"></textarea>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="fi-status">Status</label>
+            <select id="fi-status" name="status">
+              <option value="open">Open</option>
+              <option value="resolved">Resolved</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="fi-assignedTo">Assigned To <span class="hint">(optional)</span></label>
+            <input type="text" id="fi-assignedTo" name="assignedTo" placeholder="e.g. Alice">
+          </div>
+        </div>
+        <div class="form-group" id="resolution-wrap" style="display:none;">
+          <label for="fi-resolution">Resolution Notes</label>
+          <textarea id="fi-resolution" name="resolution" placeholder="How was this resolved?"></textarea>
+        </div>
+        <div class="form-actions">
+          <button type="submit" class="btn btn-primary">Save Issue</button>
+          <button type="button" class="btn btn-ghost" id="btn-cancel-issue-2">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
+
+<!-- ── View: Reports ───────────────────────────────────────────────────────── -->
+<section class="view" id="view-reports">
+  <div class="page">
+    <div class="page-header">
+      <div>
+        <h1 class="page-title">Reports</h1>
+        <p class="page-subtitle">Analytics across all projects</p>
+      </div>
+      <button class="btn btn-ghost" id="btn-refresh-reports">&#8635; Refresh</button>
+    </div>
+    <div class="stats-row">
+      <div class="stat-tile purple">
+        <div class="stat-label">Total Projects</div>
+        <div class="stat-value" id="stat-total-projects">—</div>
+      </div>
+      <div class="stat-tile blue">
+        <div class="stat-label">Avg Duration</div>
+        <div class="stat-value" id="stat-avg-duration">—</div>
+      </div>
+      <div class="stat-tile amber">
+        <div class="stat-label">Open Issues</div>
+        <div class="stat-value" id="stat-open-issues">—</div>
+      </div>
+      <div class="stat-tile green">
+        <div class="stat-label">Resolved Issues</div>
+        <div class="stat-value" id="stat-resolved-issues">—</div>
+      </div>
+    </div>
+    <div class="charts-grid">
+      <div class="chart-card">
+        <div class="chart-title">Projects per Team Member</div>
+        <canvas id="chart-projects-per-person"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Project Status Breakdown</div>
+        <canvas id="chart-project-status"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Issues per Project (Open vs Resolved)</div>
+        <canvas id="chart-issues-per-project"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Project Duration (days)</div>
+        <canvas id="chart-duration"></canvas>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Toast ───────────────────────────────────────────────────────────────── -->
+<div id="toast" role="alert"></div>
+
+<!-- ── Confirm Dialog ─────────────────────────────────────────────────────── -->
+<div id="confirm-overlay">
+  <div class="confirm-box">
+    <h3>Are you sure?</h3>
+    <p id="confirm-message"></p>
+    <div class="confirm-actions">
+      <button class="btn btn-danger" id="btn-confirm-yes">Delete</button>
+      <button class="btn btn-ghost" id="btn-confirm-no">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Scripts ─────────────────────────────────────────────────────────────── -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="firebase-config.js"></script>
+<script src="app.js"></script>
+
+</body>
+</html>
