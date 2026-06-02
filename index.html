@@ -29,9 +29,32 @@
         <p class="page-subtitle">All team projects in one place</p>
       </div>
     </div>
+
+    <!-- Summary strip -->
+    <div class="dashboard-stats" id="dashboard-stats">
+      <div class="dash-stat blue">
+        <div class="dash-stat-value" id="ds-active">—</div>
+        <div class="dash-stat-label">Active</div>
+      </div>
+      <div class="dash-stat red">
+        <div class="dash-stat-value" id="ds-overdue">—</div>
+        <div class="dash-stat-label">Overdue</div>
+      </div>
+      <div class="dash-stat amber">
+        <div class="dash-stat-value" id="ds-open">—</div>
+        <div class="dash-stat-label">Open Issues</div>
+      </div>
+      <div class="dash-stat green">
+        <div class="dash-stat-value" id="ds-resolved">—</div>
+        <div class="dash-stat-label">Resolved Issues</div>
+      </div>
+    </div>
+
     <div class="toolbar">
       <div class="search-wrap">
-        <span class="search-icon">&#128269;</span>
+        <span class="search-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        </span>
         <input type="text" id="search-input" placeholder="Search projects…">
       </div>
       <select class="filter-select" id="status-filter">
@@ -39,6 +62,9 @@
         <option value="active">Active</option>
         <option value="completed">Completed</option>
         <option value="on-hold">On Hold</option>
+      </select>
+      <select class="filter-select" id="member-filter">
+        <option value="">All Members</option>
       </select>
       <span class="count-badge" id="count-badge"></span>
     </div>
@@ -54,9 +80,9 @@
     <div class="back-row">
       <button class="btn btn-ghost btn-sm" id="btn-back-to-dashboard">&#8592; Back</button>
     </div>
-    <div class="detail-header" id="detail-header">
-      <!-- rendered by JS -->
-    </div>
+    <div class="detail-header" id="detail-header"></div>
+
+    <!-- Issues -->
     <div class="issues-header">
       <h2 style="font-size:1.1rem;font-weight:700;">Issues</h2>
       <div style="display:flex;gap:.75rem;align-items:center;flex-wrap:wrap;">
@@ -68,8 +94,16 @@
         <button class="btn btn-primary btn-sm" id="btn-add-issue">+ Add Issue</button>
       </div>
     </div>
-    <div id="issues-list">
-      <div class="loading">Loading issues…</div>
+    <div id="issues-list"></div>
+
+    <!-- Notes -->
+    <div class="notes-section">
+      <h2 style="font-size:1.1rem;font-weight:700;margin-bottom:1rem;">Notes &amp; Updates</h2>
+      <div class="note-input-row">
+        <textarea id="note-input" placeholder="Add a note or status update…" rows="2"></textarea>
+        <button class="btn btn-primary btn-sm" id="btn-add-note">Add Note</button>
+      </div>
+      <div id="notes-list"></div>
     </div>
   </div>
 </section>
@@ -151,8 +185,22 @@
             </select>
           </div>
           <div class="form-group">
+            <label for="fi-priority">Priority</label>
+            <select id="fi-priority" name="priority">
+              <option value="high">High</option>
+              <option value="medium" selected>Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
             <label for="fi-assignedTo">Assigned To <span class="hint">(optional)</span></label>
             <input type="text" id="fi-assignedTo" name="assignedTo" placeholder="e.g. Alice">
+          </div>
+          <div class="form-group">
+            <label for="fi-dueDate">Due Date <span class="hint">(optional)</span></label>
+            <input type="date" id="fi-dueDate" name="dueDate">
           </div>
         </div>
         <div class="form-group" id="resolution-wrap" style="display:none;">
@@ -176,7 +224,10 @@
         <h1 class="page-title">Reports</h1>
         <p class="page-subtitle">Analytics across all projects</p>
       </div>
-      <button class="btn btn-ghost" id="btn-refresh-reports">&#8635; Refresh</button>
+      <div style="display:flex;gap:.5rem;">
+        <button class="btn btn-ghost" id="btn-export-csv">&#8595; Export CSV</button>
+        <button class="btn btn-ghost" id="btn-refresh-reports">&#8635; Refresh</button>
+      </div>
     </div>
     <div class="stats-row">
       <div class="stat-tile purple">

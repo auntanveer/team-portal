@@ -1,4 +1,4 @@
-// ─── Chart.js global defaults (light theme) ──────────────────────────────────
+// ─── Chart.js global defaults ─────────────────────────────────────────────────
 Chart.defaults.color = '#64748b';
 Chart.defaults.borderColor = '#e2e8f0';
 Chart.defaults.font.family = "'Inter', 'Segoe UI', sans-serif";
@@ -12,30 +12,64 @@ const state = {
   editingIssueId: null,
   issueFilter: 'all',
   allProjects: [],
+  cachedIssues: [],   // issues for current project detail
+  reportData: null,
   charts: {}
 };
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 function escapeHtml(s) {
   if (!s) return '';
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr + 'T00:00:00');
-  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+function formatDate(d) {
+  if (!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  return isNaN(dt) ? '' : dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(ts) {
+  if (!ts) return '';
+  const d = new Date(ts);
+  return isNaN(d) ? '' :
+    d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) + ' ' +
+    d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function isOverdue(project) {
+  if (!project.endDate || project.status === 'completed') return false;
+  return new Date(project.endDate + 'T23:59:59') < new Date();
+}
+
+function isDueOverdue(dueDate, status) {
+  if (!dueDate || status === 'resolved') return false;
+  return new Date(dueDate + 'T23:59:59') < new Date();
+}
+
+function statusLabel(s) {
+  return s === 'on-hold' ? 'On Hold' : s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function progressBar(open, resolved) {
+  const total = open + resolved;
+  if (total === 0) return '<p class="progress-label" style="margin-top:.25rem;">No issues logged</p>';
+  const pct = Math.round((resolved / total) * 100);
+  return `
+    <div class="progress-wrap">
+      <div class="progress-info">
+        <span class="progress-label">${resolved} of ${total} issues resolved</span>
+        <span class="progress-label">${pct}%</span>
+      </div>
+      <div class="progress-bar-wrap"><div class="progress-bar" style="width:${pct}%"></div></div>
+    </div>`;
 }
 
 function showToast(message, type = 'success') {
-  const toast = document.getElementById('toast');
-  toast.textContent = message;
-  toast.className = 'show ' + type;
-  setTimeout(() => toast.className = '', 3000);
+  const t = document.getElementById('toast');
+  t.textContent = message;
+  t.className = 'show ' + type;
+  setTimeout(() => t.className = '', 3200);
 }
 
 function showConfirmDialog(message, onConfirm) {
@@ -46,21 +80,18 @@ function showConfirmDialog(message, onConfirm) {
     overlay.classList.remove('show');
     await onConfirm();
   };
-  document.getElementById('btn-confirm-no').onclick = () => {
-    overlay.classList.remove('show');
-  };
+  document.getElementById('btn-confirm-no').onclick = () => overlay.classList.remove('show');
 }
 
 // ─── Router ───────────────────────────────────────────────────────────────────
-function showView(viewName) {
+function showView(name) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  const el = document.getElementById('view-' + viewName);
-  if (el) el.classList.add('active');
-  state.currentView = viewName;
-  document.querySelectorAll('[data-view]').forEach(a => {
-    a.classList.toggle('active', a.dataset.view === viewName);
-  });
-  window.location.hash = '#' + viewName;
+  document.getElementById('view-' + name)?.classList.add('active');
+  state.currentView = name;
+  document.querySelectorAll('[data-view]').forEach(a =>
+    a.classList.toggle('active', a.dataset.view === name)
+  );
+  window.location.hash = '#' + name;
 }
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
@@ -69,15 +100,38 @@ async function loadDashboard() {
   document.getElementById('projects-grid').innerHTML = '<div class="loading">Loading projects…</div>';
   try {
     state.allProjects = await getProjects();
+    renderDashboardStats(state.allProjects);
+    populateMemberFilter(state.allProjects);
     renderProjectCards(state.allProjects);
   } catch (err) {
-    document.getElementById('projects-grid').innerHTML = '<div class="loading">Failed to load. Check your Firebase config.</div>';
+    document.getElementById('projects-grid').innerHTML = '<div class="loading">Failed to load. Check your Apps Script URL.</div>';
     console.error(err);
   }
 }
 
+function renderDashboardStats(projects) {
+  const today = new Date();
+  const active  = projects.filter(p => p.status === 'active').length;
+  const overdue = projects.filter(p => isOverdue(p)).length;
+  const open    = projects.reduce((s, p) => s + (p.openIssues || 0), 0);
+  const resolved= projects.reduce((s, p) => s + (p.resolvedIssues || 0), 0);
+  document.getElementById('ds-active').textContent   = active;
+  document.getElementById('ds-overdue').textContent  = overdue;
+  document.getElementById('ds-open').textContent     = open;
+  document.getElementById('ds-resolved').textContent = resolved;
+}
+
+function populateMemberFilter(projects) {
+  const members = [...new Set(projects.flatMap(p => p.resources || []))].sort();
+  const sel = document.getElementById('member-filter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All Members</option>' +
+    members.map(m => `<option value="${escapeHtml(m)}">${escapeHtml(m)}</option>`).join('');
+  sel.value = cur;
+}
+
 function renderProjectCards(projects) {
-  const grid = document.getElementById('projects-grid');
+  const grid  = document.getElementById('projects-grid');
   const badge = document.getElementById('count-badge');
   badge.textContent = projects.length + ' project' + (projects.length !== 1 ? 's' : '');
 
@@ -85,27 +139,31 @@ function renderProjectCards(projects) {
     grid.innerHTML = `
       <div class="empty-state">
         <span class="empty-icon">&#128193;</span>
-        <p>No projects yet.</p>
-        <button class="btn btn-primary" onclick="openProjectForm(null)">+ Create your first project</button>
+        <p>No projects match your filters.</p>
+        <button class="btn btn-primary" onclick="openProjectForm(null)">+ New Project</button>
       </div>`;
     return;
   }
 
   grid.innerHTML = projects.map(p => {
-    const resources = (p.resources || []).map(r => `<span class="chip">${escapeHtml(r)}</span>`).join('');
-    const dateRange = [formatDate(p.startDate), formatDate(p.endDate)]
-      .filter(Boolean).join(' → ') || 'No dates set';
+    const chips    = (p.resources || []).map(r => `<span class="chip">${escapeHtml(r)}</span>`).join('');
+    const dateRange= [formatDate(p.startDate), formatDate(p.endDate)].filter(Boolean).join(' → ') || 'No dates set';
+    const overdue  = isOverdue(p);
     return `
       <div class="project-card">
         <div class="card-top">
           <span class="card-name">${escapeHtml(p.name)}</span>
-          <span class="badge badge-${p.status}">${p.status === 'on-hold' ? 'On Hold' : p.status.charAt(0).toUpperCase() + p.status.slice(1)}</span>
+          <div style="display:flex;gap:.35rem;flex-wrap:wrap;justify-content:flex-end;">
+            ${overdue ? '<span class="badge badge-overdue">Overdue</span>' : ''}
+            <span class="badge badge-${p.status}">${statusLabel(p.status)}</span>
+          </div>
         </div>
         ${p.description ? `<p class="card-desc">${escapeHtml(p.description)}</p>` : ''}
         <div class="card-meta">
           <span class="meta-item">&#128197; ${escapeHtml(dateRange)}</span>
         </div>
-        ${resources ? `<div class="resource-chips">${resources}</div>` : ''}
+        ${chips ? `<div class="resource-chips">${chips}</div>` : ''}
+        ${progressBar(p.openIssues || 0, p.resolvedIssues || 0)}
         <div class="card-actions">
           <button class="btn btn-ghost btn-sm btn-view-project" data-id="${p.id}">View</button>
           <button class="btn btn-ghost btn-sm btn-edit-project" data-id="${p.id}">Edit</button>
@@ -118,11 +176,12 @@ function renderProjectCards(projects) {
 function filterProjects() {
   const search = document.getElementById('search-input').value.toLowerCase();
   const status = document.getElementById('status-filter').value;
-  const filtered = state.allProjects.filter(p => {
-    const matchName = p.name.toLowerCase().includes(search);
-    const matchStatus = !status || p.status === status;
-    return matchName && matchStatus;
-  });
+  const member = document.getElementById('member-filter').value;
+  const filtered = state.allProjects.filter(p =>
+    p.name.toLowerCase().includes(search) &&
+    (!status || p.status === status) &&
+    (!member || (p.resources || []).includes(member))
+  );
   renderProjectCards(filtered);
 }
 
@@ -131,58 +190,59 @@ async function loadProjectDetail(projectId) {
   state.currentProjectId = projectId;
   state.issueFilter = 'all';
   showView('project-detail');
-
   document.getElementById('detail-header').innerHTML = '<div class="loading">Loading…</div>';
-  document.getElementById('issues-list').innerHTML = '<div class="loading">Loading issues…</div>';
-
-  document.querySelectorAll('.filter-tab').forEach(t => {
-    t.classList.toggle('active', t.dataset.filter === 'all');
-  });
+  document.getElementById('issues-list').innerHTML   = '<div class="loading">Loading issues…</div>';
+  document.getElementById('notes-list').innerHTML    = '<div class="loading">Loading notes…</div>';
+  document.querySelectorAll('.filter-tab').forEach(t => t.classList.toggle('active', t.dataset.filter === 'all'));
 
   try {
-    const [project, issues] = await Promise.all([
+    const [project, issues, notes] = await Promise.all([
       getProject(projectId),
-      getIssues(projectId)
+      getIssues(projectId),
+      getNotes(projectId)
     ]);
     if (!project) { showToast('Project not found', 'error'); loadDashboard(); return; }
-    renderDetailHeader(project);
+    state.cachedIssues = issues;
+    renderDetailHeader(project, issues);
     renderIssueList(issues);
+    renderNotes(notes);
   } catch (err) {
-    showToast('Error loading project: ' + err.message, 'error');
+    showToast('Error: ' + err.message, 'error');
     console.error(err);
   }
 }
 
-function renderDetailHeader(p) {
-  const resources = (p.resources || []).map(r => `<span class="chip">${escapeHtml(r)}</span>`).join('');
+function renderDetailHeader(p, issues) {
+  const chips    = (p.resources || []).map(r => `<span class="chip">${escapeHtml(r)}</span>`).join('');
+  const open     = issues.filter(i => i.status === 'open').length;
+  const resolved = issues.filter(i => i.status === 'resolved').length;
+  const overdue  = isOverdue(p);
+
   document.getElementById('detail-header').innerHTML = `
     <div class="detail-title">
       ${escapeHtml(p.name)}
-      <span class="badge badge-${p.status}">${p.status === 'on-hold' ? 'On Hold' : p.status.charAt(0).toUpperCase() + p.status.slice(1)}</span>
+      ${overdue ? '<span class="badge badge-overdue">Overdue</span>' : ''}
+      <span class="badge badge-${p.status}">${statusLabel(p.status)}</span>
     </div>
     ${p.description ? `<p class="detail-desc">${escapeHtml(p.description)}</p>` : ''}
     <div class="detail-meta">
       ${p.startDate ? `<span>&#128197; Start: ${formatDate(p.startDate)}</span>` : ''}
       ${p.endDate   ? `<span>&#127937; End: ${formatDate(p.endDate)}</span>` : ''}
-      ${p.resources && p.resources.length ? `<span>&#128101; Team: ${p.resources.length} member${p.resources.length !== 1 ? 's' : ''}</span>` : ''}
+      ${p.resources?.length ? `<span>&#128101; ${p.resources.length} member${p.resources.length !== 1 ? 's' : ''}</span>` : ''}
     </div>
-    ${resources ? `<div class="resource-chips" style="margin-bottom:1rem;">${resources}</div>` : ''}
-    <div class="detail-actions">
+    ${chips ? `<div class="resource-chips" style="margin-bottom:.75rem;">${chips}</div>` : ''}
+    ${progressBar(open, resolved)}
+    <div class="detail-actions" style="margin-top:1rem;">
       <button class="btn btn-ghost btn-sm" id="btn-edit-current-project">Edit Project</button>
       <button class="btn btn-danger btn-sm" id="btn-delete-current-project">Delete Project</button>
     </div>`;
 
-  document.getElementById('btn-edit-current-project')
-    .addEventListener('click', () => openProjectForm(p.id));
-  document.getElementById('btn-delete-current-project')
-    .addEventListener('click', () => confirmDeleteProject(p.id));
+  document.getElementById('btn-edit-current-project').addEventListener('click', () => openProjectForm(p.id));
+  document.getElementById('btn-delete-current-project').addEventListener('click', () => confirmDeleteProject(p.id));
 }
 
 function renderIssueList(issues) {
-  const filtered = state.issueFilter === 'all'
-    ? issues
-    : issues.filter(i => i.status === state.issueFilter);
-
+  const filtered = state.issueFilter === 'all' ? issues : issues.filter(i => i.status === state.issueFilter);
   const list = document.getElementById('issues-list');
 
   if (filtered.length === 0) {
@@ -193,23 +253,50 @@ function renderIssueList(issues) {
     return;
   }
 
-  list.innerHTML = filtered.map(issue => `
-    <div class="issue-card ${issue.status}">
-      <div class="issue-top">
-        <span class="issue-title">${escapeHtml(issue.title)}</span>
-        <span class="badge badge-${issue.status}">${issue.status.charAt(0).toUpperCase() + issue.status.slice(1)}</span>
-      </div>
-      ${issue.description ? `<p class="issue-body">${escapeHtml(issue.description)}</p>` : ''}
-      ${issue.resolution ? `<div class="issue-resolution">&#10003; ${escapeHtml(issue.resolution)}</div>` : ''}
-      <div class="issue-footer">
-        <div class="issue-meta">
-          ${issue.assignedTo ? `<span>&#128100; ${escapeHtml(issue.assignedTo)}</span>` : ''}
+  list.innerHTML = filtered.map(issue => {
+    const dueOverdue = isDueOverdue(issue.dueDate, issue.status);
+    const dueLabel   = issue.dueDate
+      ? `<span class="issue-due ${dueOverdue ? 'overdue' : ''}">&#128197; Due ${formatDate(issue.dueDate)}${dueOverdue ? ' (Overdue)' : ''}</span>`
+      : '';
+    return `
+      <div class="issue-card ${issue.status}">
+        <div class="issue-top">
+          <span class="issue-title">${escapeHtml(issue.title)}</span>
+          <div style="display:flex;gap:.35rem;flex-wrap:wrap;">
+            <span class="badge badge-${issue.priority || 'medium'}">${(issue.priority || 'medium').charAt(0).toUpperCase() + (issue.priority || 'medium').slice(1)}</span>
+            <span class="badge badge-${issue.status}">${statusLabel(issue.status)}</span>
+          </div>
         </div>
-        <div class="issue-actions">
-          <button class="btn btn-ghost btn-icon btn-edit-issue" data-id="${issue.id}">Edit</button>
-          <button class="btn btn-danger btn-icon btn-delete-issue" data-id="${issue.id}">&#128465;</button>
+        ${issue.description ? `<p class="issue-body">${escapeHtml(issue.description)}</p>` : ''}
+        ${issue.resolution  ? `<div class="issue-resolution">&#10003; ${escapeHtml(issue.resolution)}</div>` : ''}
+        <div class="issue-footer">
+          <div class="issue-meta">
+            ${issue.assignedTo ? `<span>&#128100; ${escapeHtml(issue.assignedTo)}</span>` : ''}
+            ${dueLabel}
+          </div>
+          <div class="issue-actions">
+            <button class="btn btn-ghost btn-icon btn-edit-issue" data-id="${issue.id}">Edit</button>
+            <button class="btn btn-danger btn-icon btn-delete-issue" data-id="${issue.id}">&#128465;</button>
+          </div>
         </div>
+      </div>`;
+  }).join('');
+}
+
+// ─── Notes ────────────────────────────────────────────────────────────────────
+function renderNotes(notes) {
+  const list = document.getElementById('notes-list');
+  if (!notes || notes.length === 0) {
+    list.innerHTML = '<p class="notes-empty">No notes yet.</p>';
+    return;
+  }
+  list.innerHTML = notes.map(n => `
+    <div class="note-card">
+      <div class="note-header">
+        <span class="note-date">${formatDateTime(n.createdAt)}</span>
+        <button class="btn btn-danger btn-icon btn-delete-note" data-id="${n.id}" style="padding:.2rem .5rem;font-size:.75rem;">&#128465;</button>
       </div>
+      <p class="note-text">${escapeHtml(n.text)}</p>
     </div>`).join('');
 }
 
@@ -231,10 +318,7 @@ async function openProjectForm(projectId = null) {
       form.elements['endDate'].value     = p.endDate || '';
       form.elements['status'].value      = p.status || 'active';
       form.elements['resources'].value   = (p.resources || []).join(', ');
-    } catch (err) {
-      showToast('Error loading project: ' + err.message, 'error');
-      return;
-    }
+    } catch (err) { showToast('Error: ' + err.message, 'error'); return; }
   }
   showView('project-form');
 }
@@ -242,9 +326,8 @@ async function openProjectForm(projectId = null) {
 document.getElementById('project-form').addEventListener('submit', async e => {
   e.preventDefault();
   const form = e.target;
-  const btn = form.querySelector('[type="submit"]');
-  btn.textContent = 'Saving…';
-  btn.disabled = true;
+  const btn  = form.querySelector('[type="submit"]');
+  btn.textContent = 'Saving…'; btn.disabled = true;
 
   const data = {
     name:        form.elements['name'].value.trim(),
@@ -252,138 +335,94 @@ document.getElementById('project-form').addEventListener('submit', async e => {
     startDate:   form.elements['startDate'].value || null,
     endDate:     form.elements['endDate'].value || null,
     status:      form.elements['status'].value,
-    resources:   form.elements['resources'].value
-                   .split(',').map(r => r.trim()).filter(Boolean)
+    resources:   form.elements['resources'].value.split(',').map(r => r.trim()).filter(Boolean)
   };
 
-  if (!data.name) {
-    showToast('Project name is required', 'error');
-    btn.textContent = 'Save Project';
-    btn.disabled = false;
-    return;
-  }
+  if (!data.name) { showToast('Project name is required', 'error'); btn.textContent = 'Save Project'; btn.disabled = false; return; }
 
   try {
-    if (state.editingProjectId) {
-      await updateProject(state.editingProjectId, data);
-      showToast('Project updated');
-    } else {
-      await addProject(data);
-      showToast('Project created');
-    }
+    if (state.editingProjectId) { await updateProject(state.editingProjectId, data); showToast('Project updated'); }
+    else { await addProject(data); showToast('Project created'); }
     loadDashboard();
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  } finally {
-    btn.textContent = 'Save Project';
-    btn.disabled = false;
-  }
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  finally { btn.textContent = 'Save Project'; btn.disabled = false; }
 });
 
 // ─── Issue Form ───────────────────────────────────────────────────────────────
 async function openIssueForm(projectId, issueId = null) {
-  state.editingIssueId = issueId;
+  state.editingIssueId   = issueId;
   state.currentProjectId = projectId;
   document.getElementById('issue-form-title').textContent = issueId ? 'Edit Issue' : 'New Issue';
   const form = document.getElementById('issue-form');
   form.reset();
-  document.getElementById('issue-form-id').value = '';
+  document.getElementById('issue-form-id').value         = '';
   document.getElementById('issue-form-project-id').value = projectId;
+  form.elements['priority'].value = 'medium';
   toggleResolutionField('open');
 
   if (issueId) {
     try {
-      const issues = await getIssues(projectId);
-      const issue = issues.find(i => i.id === issueId);
+      const issue = state.cachedIssues.find(i => i.id === issueId) || (await getIssues(projectId)).find(i => i.id === issueId);
       if (!issue) { showToast('Issue not found', 'error'); return; }
-      document.getElementById('issue-form-id').value = issue.id;
+      document.getElementById('issue-form-id').value  = issue.id;
       form.elements['title'].value       = issue.title || '';
       form.elements['description'].value = issue.description || '';
       form.elements['status'].value      = issue.status || 'open';
+      form.elements['priority'].value    = issue.priority || 'medium';
       form.elements['assignedTo'].value  = issue.assignedTo || '';
+      form.elements['dueDate'].value     = issue.dueDate || '';
       form.elements['resolution'].value  = issue.resolution || '';
       toggleResolutionField(issue.status);
-    } catch (err) {
-      showToast('Error loading issue: ' + err.message, 'error');
-      return;
-    }
+    } catch (err) { showToast('Error: ' + err.message, 'error'); return; }
   }
   showView('issue-form');
 }
 
 function toggleResolutionField(status) {
-  document.getElementById('resolution-wrap').style.display =
-    status === 'resolved' ? 'block' : 'none';
+  document.getElementById('resolution-wrap').style.display = status === 'resolved' ? 'block' : 'none';
 }
 
-document.getElementById('fi-status').addEventListener('change', e => {
-  toggleResolutionField(e.target.value);
-});
+document.getElementById('fi-status').addEventListener('change', e => toggleResolutionField(e.target.value));
 
 document.getElementById('issue-form').addEventListener('submit', async e => {
   e.preventDefault();
   const form = e.target;
-  const btn = form.querySelector('[type="submit"]');
-  btn.textContent = 'Saving…';
-  btn.disabled = true;
+  const btn  = form.querySelector('[type="submit"]');
+  btn.textContent = 'Saving…'; btn.disabled = true;
 
   const data = {
     title:       form.elements['title'].value.trim(),
     description: form.elements['description'].value.trim(),
     status:      form.elements['status'].value,
+    priority:    form.elements['priority'].value,
     assignedTo:  form.elements['assignedTo'].value.trim(),
-    resolution:  form.elements['status'].value === 'resolved'
-                   ? form.elements['resolution'].value.trim()
-                   : ''
+    dueDate:     form.elements['dueDate'].value || null,
+    resolution:  form.elements['status'].value === 'resolved' ? form.elements['resolution'].value.trim() : ''
   };
 
-  if (!data.title) {
-    showToast('Issue title is required', 'error');
-    btn.textContent = 'Save Issue';
-    btn.disabled = false;
-    return;
-  }
+  if (!data.title) { showToast('Issue title is required', 'error'); btn.textContent = 'Save Issue'; btn.disabled = false; return; }
 
   const pid = state.currentProjectId;
   try {
-    if (state.editingIssueId) {
-      await updateIssue(pid, state.editingIssueId, data);
-      showToast('Issue updated');
-    } else {
-      await addIssue(pid, data);
-      showToast('Issue added');
-    }
+    if (state.editingIssueId) { await updateIssue(pid, state.editingIssueId, data); showToast('Issue updated'); }
+    else { await addIssue(pid, data); showToast('Issue added'); }
     loadProjectDetail(pid);
-  } catch (err) {
-    showToast('Error: ' + err.message, 'error');
-  } finally {
-    btn.textContent = 'Save Issue';
-    btn.disabled = false;
-  }
+  } catch (err) { showToast('Error: ' + err.message, 'error'); }
+  finally { btn.textContent = 'Save Issue'; btn.disabled = false; }
 });
 
 // ─── Delete Handlers ──────────────────────────────────────────────────────────
 function confirmDeleteProject(projectId) {
-  showConfirmDialog('Delete this project and all its issues? This cannot be undone.', async () => {
-    try {
-      await deleteProject(projectId);
-      showToast('Project deleted');
-      loadDashboard();
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    }
+  showConfirmDialog('Delete this project and all its issues and notes? This cannot be undone.', async () => {
+    try { await deleteProject(projectId); showToast('Project deleted'); loadDashboard(); }
+    catch (err) { showToast('Error: ' + err.message, 'error'); }
   });
 }
 
 function confirmDeleteIssue(projectId, issueId) {
-  showConfirmDialog('Delete this issue? This cannot be undone.', async () => {
-    try {
-      await deleteIssue(projectId, issueId);
-      showToast('Issue deleted');
-      loadProjectDetail(projectId);
-    } catch (err) {
-      showToast('Error: ' + err.message, 'error');
-    }
+  showConfirmDialog('Delete this issue?', async () => {
+    try { await deleteIssue(projectId, issueId); showToast('Issue deleted'); loadProjectDetail(projectId); }
+    catch (err) { showToast('Error: ' + err.message, 'error'); }
   });
 }
 
@@ -392,298 +431,207 @@ async function loadReports() {
   showView('reports');
   ['stat-total-projects','stat-avg-duration','stat-open-issues','stat-resolved-issues']
     .forEach(id => document.getElementById(id).textContent = '…');
-
   Object.values(state.charts).forEach(c => { try { c.destroy(); } catch(_) {} });
   state.charts = {};
 
   try {
-    const reportData = await getReportData();
-    renderSummaryStats(reportData);
-    renderProjectsPerPersonChart(reportData);
-    renderProjectStatusChart(reportData);
-    renderIssuesPerProjectChart(reportData);
-    renderDurationChart(reportData);
-  } catch (err) {
-    showToast('Error loading reports: ' + err.message, 'error');
-    console.error(err);
-  }
+    state.reportData = await getReportData();
+    renderSummaryStats(state.reportData);
+    renderProjectsPerPersonChart(state.reportData);
+    renderProjectStatusChart(state.reportData);
+    renderIssuesPerProjectChart(state.reportData);
+    renderDurationChart(state.reportData);
+  } catch (err) { showToast('Error: ' + err.message, 'error'); console.error(err); }
 }
 
 function renderSummaryStats(reportData) {
-  const allIssues = reportData.flatMap(d => d.issues);
-  const openCount = allIssues.filter(i => i.status === 'open').length;
-  const resolvedCount = allIssues.filter(i => i.status === 'resolved').length;
-
-  const durations = reportData
+  const allIssues   = reportData.flatMap(d => d.issues);
+  const durations   = reportData
     .filter(d => d.project.startDate && d.project.endDate)
-    .map(d => Math.round(
-      (new Date(d.project.endDate) - new Date(d.project.startDate)) / 86400000
-    ));
+    .map(d => Math.round((new Date(d.project.endDate) - new Date(d.project.startDate)) / 86400000));
   const avgDuration = durations.length
-    ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) + 'd'
-    : '—';
+    ? Math.round(durations.reduce((a,b) => a+b, 0) / durations.length) + 'd' : '—';
 
-  document.getElementById('stat-total-projects').textContent   = reportData.length;
-  document.getElementById('stat-avg-duration').textContent     = avgDuration;
-  document.getElementById('stat-open-issues').textContent      = openCount;
-  document.getElementById('stat-resolved-issues').textContent  = resolvedCount;
+  document.getElementById('stat-total-projects').textContent  = reportData.length;
+  document.getElementById('stat-avg-duration').textContent    = avgDuration;
+  document.getElementById('stat-open-issues').textContent     = allIssues.filter(i => i.status === 'open').length;
+  document.getElementById('stat-resolved-issues').textContent = allIssues.filter(i => i.status === 'resolved').length;
 }
 
 function chartColors(n) {
-  const palette = ['#7c3aed','#2563eb','#16a34a','#d97706','#dc2626','#0891b2','#9333ea','#0284c7'];
-  return Array.from({ length: n }, (_, i) => palette[i % palette.length]);
+  const p = ['#7c3aed','#2563eb','#16a34a','#d97706','#dc2626','#0891b2','#9333ea','#0284c7'];
+  return Array.from({ length: n }, (_, i) => p[i % p.length]);
 }
 
 function renderProjectsPerPersonChart(reportData) {
-  const personMap = {};
-  reportData.forEach(({ project }) => {
-    (project.resources || []).forEach(person => {
-      personMap[person] = (personMap[person] || 0) + 1;
-    });
+  const map = {};
+  reportData.forEach(({ project }) => (project.resources || []).forEach(r => map[r] = (map[r]||0)+1));
+  const labels = Object.keys(map), data = labels.map(k => map[k]);
+  if (!labels.length) return;
+  state.charts.perPerson = new Chart(document.getElementById('chart-projects-per-person'), {
+    type: 'bar',
+    data: { labels, datasets: [{ label: 'Projects', data, backgroundColor: chartColors(labels.length).map(c=>c+'cc'), borderColor: chartColors(labels.length), borderWidth: 1.5, borderRadius: 6 }] },
+    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } }, y: { grid: { display: false } } } }
   });
-  const labels = Object.keys(personMap);
-  const data   = labels.map(k => personMap[k]);
-
-  if (labels.length === 0) {
-    document.getElementById('chart-projects-per-person').closest('.chart-card').innerHTML +=
-      '<p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">No team members assigned yet.</p>';
-    return;
-  }
-
-  state.charts.perPerson = new Chart(
-    document.getElementById('chart-projects-per-person'),
-    {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          label: 'Projects',
-          data,
-          backgroundColor: chartColors(labels.length).map(c => c + 'cc'),
-          borderColor: chartColors(labels.length),
-          borderWidth: 1.5,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } },
-          y: { grid: { display: false } }
-        }
-      }
-    }
-  );
 }
 
 function renderProjectStatusChart(reportData) {
-  const counts = { active: 0, completed: 0, 'on-hold': 0 };
-  reportData.forEach(({ project }) => {
-    if (counts[project.status] !== undefined) counts[project.status]++;
+  const c = { active: 0, completed: 0, 'on-hold': 0 };
+  reportData.forEach(({ project }) => { if (c[project.status] !== undefined) c[project.status]++; });
+  state.charts.status = new Chart(document.getElementById('chart-project-status'), {
+    type: 'doughnut',
+    data: { labels: ['Active','Completed','On Hold'], datasets: [{ data: [c.active, c.completed, c['on-hold']], backgroundColor: ['#7c3aedcc','#2563ebcc','#d97706cc'], borderColor: ['#7c3aed','#2563eb','#d97706'], borderWidth: 2 }] },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { padding: 16, usePointStyle: true } } }, cutout: '65%' }
   });
-
-  state.charts.status = new Chart(
-    document.getElementById('chart-project-status'),
-    {
-      type: 'doughnut',
-      data: {
-        labels: ['Active', 'Completed', 'On Hold'],
-        datasets: [{
-          data: [counts.active, counts.completed, counts['on-hold']],
-          backgroundColor: ['#7c3aedcc', '#2563ebcc', '#d97706cc'],
-          borderColor: ['#7c3aed', '#2563eb', '#d97706'],
-          borderWidth: 2
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: {
-          legend: {
-            position: 'bottom',
-            labels: { padding: 16, usePointStyle: true }
-          }
-        },
-        cutout: '65%'
-      }
-    }
-  );
 }
 
 function renderIssuesPerProjectChart(reportData) {
-  const labels      = reportData.map(d => d.project.name);
-  const openData    = reportData.map(d => d.issues.filter(i => i.status === 'open').length);
-  const resolvedData = reportData.map(d => d.issues.filter(i => i.status === 'resolved').length);
-
-  state.charts.issues = new Chart(
-    document.getElementById('chart-issues-per-project'),
-    {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [
-          {
-            label: 'Open',
-            data: openData,
-            backgroundColor: '#dc262680',
-            borderColor: '#dc2626',
-            borderWidth: 1.5,
-            borderRadius: 4
-          },
-          {
-            label: 'Resolved',
-            data: resolvedData,
-            backgroundColor: '#16a34a80',
-            borderColor: '#16a34a',
-            borderWidth: 1.5,
-            borderRadius: 4
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        scales: {
-          x: { stacked: true, grid: { display: false } },
-          y: { stacked: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } }
-        },
-        plugins: {
-          legend: { labels: { usePointStyle: true } }
-        }
-      }
-    }
-  );
+  const labels = reportData.map(d => d.project.name);
+  state.charts.issues = new Chart(document.getElementById('chart-issues-per-project'), {
+    type: 'bar',
+    data: { labels, datasets: [
+      { label: 'Open',     data: reportData.map(d => d.issues.filter(i=>i.status==='open').length),     backgroundColor: '#dc262680', borderColor: '#dc2626', borderWidth: 1.5, borderRadius: 4 },
+      { label: 'Resolved', data: reportData.map(d => d.issues.filter(i=>i.status==='resolved').length), backgroundColor: '#16a34a80', borderColor: '#16a34a', borderWidth: 1.5, borderRadius: 4 }
+    ]},
+    options: { responsive: true, scales: { x: { stacked: true, grid: { display: false } }, y: { stacked: true, ticks: { stepSize: 1 }, grid: { color: '#f1f5f9' } } }, plugins: { legend: { labels: { usePointStyle: true } } } }
+  });
 }
 
 function renderDurationChart(reportData) {
-  const withDates = reportData
+  const d = reportData
     .filter(d => d.project.startDate && d.project.endDate)
-    .map(d => ({
-      name: d.project.name,
-      days: Math.round(
-        (new Date(d.project.endDate) - new Date(d.project.startDate)) / 86400000
-      )
-    }))
-    .sort((a, b) => b.days - a.days);
+    .map(d => ({ name: d.project.name, days: Math.round((new Date(d.project.endDate)-new Date(d.project.startDate))/86400000) }))
+    .sort((a,b) => b.days - a.days);
+  if (!d.length) return;
+  state.charts.duration = new Chart(document.getElementById('chart-duration'), {
+    type: 'bar',
+    data: { labels: d.map(x=>x.name), datasets: [{ label: 'Days', data: d.map(x=>x.days), backgroundColor: '#2563eb80', borderColor: '#2563eb', borderWidth: 1.5, borderRadius: 6 }] },
+    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#f1f5f9' } }, y: { grid: { display: false } } } }
+  });
+}
 
-  if (withDates.length === 0) {
-    document.getElementById('chart-duration').closest('.chart-card').innerHTML +=
-      '<p style="color:var(--muted);font-size:.85rem;margin-top:.5rem;">No projects with both start and end dates.</p>';
-    return;
-  }
-
-  state.charts.duration = new Chart(
-    document.getElementById('chart-duration'),
-    {
-      type: 'bar',
-      data: {
-        labels: withDates.map(d => d.name),
-        datasets: [{
-          label: 'Days',
-          data: withDates.map(d => d.days),
-          backgroundColor: '#2563eb80',
-          borderColor: '#2563eb',
-          borderWidth: 1.5,
-          borderRadius: 6
-        }]
-      },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: { grid: { color: '#f1f5f9' } },
-          y: { grid: { display: false } }
-        }
-      }
-    }
-  );
+// ─── CSV Export ───────────────────────────────────────────────────────────────
+function exportCSV() {
+  if (!state.reportData) { showToast('Load the Reports page first', 'error'); return; }
+  const rows = [['Project','Status','Start Date','End Date','Team Members','Total Issues','Open','Resolved','High Priority','Medium Priority','Low Priority']];
+  state.reportData.forEach(({ project, issues }) => {
+    rows.push([
+      project.name, project.status,
+      project.startDate || '', project.endDate || '',
+      (project.resources || []).join('; '),
+      issues.length,
+      issues.filter(i=>i.status==='open').length,
+      issues.filter(i=>i.status==='resolved').length,
+      issues.filter(i=>i.priority==='high').length,
+      issues.filter(i=>i.priority==='medium'||!i.priority).length,
+      issues.filter(i=>i.priority==='low').length
+    ]);
+  });
+  const csv  = rows.map(r => r.map(c => `"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href = url; a.download = 'team-portal-report.csv'; a.click();
+  URL.revokeObjectURL(url);
 }
 
 // ─── Event Listeners ──────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
 
-  // Nav links
-  document.getElementById('main-nav') || true; // nav is the <nav> element
+  // Nav
   document.querySelector('nav').addEventListener('click', e => {
     const a = e.target.closest('[data-view]');
     if (!a) return;
     e.preventDefault();
-    if (a.dataset.view === 'reports') loadReports();
-    else loadDashboard();
+    a.dataset.view === 'reports' ? loadReports() : loadDashboard();
   });
 
-  // New Project button (nav)
-  document.getElementById('btn-new-project')
-    .addEventListener('click', () => openProjectForm(null));
+  document.getElementById('btn-new-project').addEventListener('click', () => openProjectForm(null));
 
-  // Dashboard: search + filter
+  // Dashboard filters
   document.getElementById('search-input').addEventListener('input', filterProjects);
   document.getElementById('status-filter').addEventListener('change', filterProjects);
+  document.getElementById('member-filter').addEventListener('change', filterProjects);
 
-  // Dashboard: project card actions (delegated)
+  // Project card clicks (delegated)
   document.getElementById('projects-grid').addEventListener('click', e => {
     const id = e.target.dataset.id;
     if (!id) return;
-    if (e.target.matches('.btn-view-project')) loadProjectDetail(id);
-    if (e.target.matches('.btn-edit-project')) openProjectForm(id);
+    if (e.target.matches('.btn-view-project'))   loadProjectDetail(id);
+    if (e.target.matches('.btn-edit-project'))   openProjectForm(id);
     if (e.target.matches('.btn-delete-project')) confirmDeleteProject(id);
   });
 
-  // Back to dashboard
-  document.getElementById('btn-back-to-dashboard')
-    .addEventListener('click', loadDashboard);
-
-  // Add Issue button
-  document.getElementById('btn-add-issue')
-    .addEventListener('click', () => openIssueForm(state.currentProjectId, null));
+  // Project detail
+  document.getElementById('btn-back-to-dashboard').addEventListener('click', loadDashboard);
+  document.getElementById('btn-add-issue').addEventListener('click', () => openIssueForm(state.currentProjectId, null));
 
   // Issue filter tabs
   document.getElementById('issue-filter-tabs').addEventListener('click', async e => {
     const btn = e.target.closest('.filter-tab');
     if (!btn) return;
     state.issueFilter = btn.dataset.filter;
-    document.querySelectorAll('.filter-tab').forEach(t =>
-      t.classList.toggle('active', t === btn)
-    );
-    const issues = await getIssues(state.currentProjectId);
-    renderIssueList(issues);
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.toggle('active', t === btn));
+    renderIssueList(state.cachedIssues);
   });
 
   // Issue list actions (delegated)
   document.getElementById('issues-list').addEventListener('click', e => {
     const id = e.target.dataset.id;
     if (!id) return;
-    if (e.target.matches('.btn-edit-issue'))
-      openIssueForm(state.currentProjectId, id);
-    if (e.target.matches('.btn-delete-issue'))
-      confirmDeleteIssue(state.currentProjectId, id);
+    if (e.target.matches('.btn-edit-issue'))   openIssueForm(state.currentProjectId, id);
+    if (e.target.matches('.btn-delete-issue')) confirmDeleteIssue(state.currentProjectId, id);
   });
 
-  // Project form cancel buttons
-  document.getElementById('btn-cancel-project')
-    .addEventListener('click', loadDashboard);
-  document.getElementById('btn-cancel-project-2')
-    .addEventListener('click', loadDashboard);
+  // Notes
+  document.getElementById('btn-add-note').addEventListener('click', async () => {
+    const input = document.getElementById('note-input');
+    const text  = input.value.trim();
+    if (!text) { showToast('Note cannot be empty', 'error'); return; }
+    const btn = document.getElementById('btn-add-note');
+    btn.textContent = 'Adding…'; btn.disabled = true;
+    try {
+      await addNote(state.currentProjectId, text);
+      input.value = '';
+      const notes = await getNotes(state.currentProjectId);
+      renderNotes(notes);
+      showToast('Note added');
+    } catch (err) { showToast('Error: ' + err.message, 'error'); }
+    finally { btn.textContent = 'Add Note'; btn.disabled = false; }
+  });
 
-  // Issue form cancel buttons
-  document.getElementById('btn-cancel-issue')
-    .addEventListener('click', () => loadProjectDetail(state.currentProjectId));
-  document.getElementById('btn-cancel-issue-2')
-    .addEventListener('click', () => loadProjectDetail(state.currentProjectId));
+  document.getElementById('notes-list').addEventListener('click', e => {
+    const id = e.target.dataset.id;
+    if (!id || !e.target.matches('.btn-delete-note')) return;
+    showConfirmDialog('Delete this note?', async () => {
+      try {
+        await deleteNote(state.currentProjectId, id);
+        const notes = await getNotes(state.currentProjectId);
+        renderNotes(notes);
+        showToast('Note deleted');
+      } catch (err) { showToast('Error: ' + err.message, 'error'); }
+    });
+  });
 
-  // Reports refresh
-  document.getElementById('btn-refresh-reports')
-    .addEventListener('click', loadReports);
+  // Project form cancel
+  document.getElementById('btn-cancel-project').addEventListener('click', loadDashboard);
+  document.getElementById('btn-cancel-project-2').addEventListener('click', loadDashboard);
 
-  // Hash-based initial routing
+  // Issue form cancel
+  document.getElementById('btn-cancel-issue').addEventListener('click', () => loadProjectDetail(state.currentProjectId));
+  document.getElementById('btn-cancel-issue-2').addEventListener('click', () => loadProjectDetail(state.currentProjectId));
+
+  // Reports
+  document.getElementById('btn-refresh-reports').addEventListener('click', loadReports);
+  document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+
+  // Initial route
   const hash = window.location.hash.replace('#', '');
-  if (hash === 'reports') loadReports();
-  else loadDashboard();
+  hash === 'reports' ? loadReports() : loadDashboard();
 });
 
 window.addEventListener('hashchange', () => {
   const hash = window.location.hash.replace('#', '');
   if (hash === 'reports' && state.currentView !== 'reports') loadReports();
-  else if ((hash === 'dashboard' || !hash) && state.currentView !== 'dashboard') loadDashboard();
+  else if ((!hash || hash === 'dashboard') && state.currentView !== 'dashboard') loadDashboard();
 });
