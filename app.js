@@ -99,26 +99,27 @@ async function loadDashboard() {
   showView('dashboard');
   document.getElementById('projects-grid').innerHTML = '<div class="loading">Loading projects…</div>';
   try {
-    state.allProjects = await getProjects();
-    renderDashboardStats(state.allProjects);
-    populateMemberFilter(state.allProjects);
-    renderProjectCards(state.allProjects);
+    const [projects, deleted] = await Promise.all([getProjects(), getDeletedCounts()]);
+    state.allProjects = projects;
+    renderDashboardStats(projects, deleted);
+    populateMemberFilter(projects);
+    renderProjectCards(projects);
   } catch (err) {
     document.getElementById('projects-grid').innerHTML = '<div class="loading">Failed to load. Check your Apps Script URL.</div>';
     console.error(err);
   }
 }
 
-function renderDashboardStats(projects) {
-  const today = new Date();
-  const active  = projects.filter(p => p.status === 'active').length;
-  const overdue = projects.filter(p => isOverdue(p)).length;
-  const open    = projects.reduce((s, p) => s + (p.openIssues || 0), 0);
-  const resolved= projects.reduce((s, p) => s + (p.resolvedIssues || 0), 0);
+function renderDashboardStats(projects, deleted = { projects: 0, issues: 0 }) {
+  const active   = projects.filter(p => p.status === 'active').length;
+  const overdue  = projects.filter(p => isOverdue(p)).length;
+  const open     = projects.reduce((s, p) => s + (p.openIssues || 0), 0);
+  const resolved = projects.reduce((s, p) => s + (p.resolvedIssues || 0), 0);
   document.getElementById('ds-active').textContent   = active;
   document.getElementById('ds-overdue').textContent  = overdue;
   document.getElementById('ds-open').textContent     = open;
   document.getElementById('ds-resolved').textContent = resolved;
+  document.getElementById('ds-deleted').textContent  = deleted.projects + deleted.issues;
 }
 
 function populateMemberFilter(projects) {

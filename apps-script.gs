@@ -54,11 +54,12 @@ function doGet(e) {
     const action    = e.parameter.action;
     const projectId = e.parameter.projectId;
 
-    if (action === 'getProjects')   return ok(getProjects());
-    if (action === 'getProject')    return ok(getProject(projectId));
-    if (action === 'getIssues')     return ok(getIssues(projectId));
-    if (action === 'getNotes')      return ok(getNotes(projectId));
-    if (action === 'getReportData') return ok(getReportData());
+    if (action === 'getProjects')     return ok(getProjects());
+    if (action === 'getProject')      return ok(getProject(projectId));
+    if (action === 'getIssues')       return ok(getIssues(projectId));
+    if (action === 'getNotes')        return ok(getNotes(projectId));
+    if (action === 'getReportData')   return ok(getReportData());
+    if (action === 'getDeletedCounts') return ok(getDeletedCounts());
     return err('Unknown action: ' + action);
   } catch(e) {
     return err(e.message);
@@ -129,7 +130,7 @@ function getProjects() {
       p.resolvedIssues = c.resolved;
       return p;
     })
-    .filter(p => p.id)
+    .filter(p => p.id && p.status !== 'deleted')
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -175,14 +176,35 @@ function updateProject(projectId, data) {
 }
 
 function deleteProject(projectId) {
-  deleteIssuesByProject(projectId);
+  softDeleteIssuesByProject(projectId);
   deleteNotesByProject(projectId);
   const sheet = getSheet('Projects');
   const rows  = sheet.getDataRange().getValues();
-  for (let i = rows.length - 1; i >= 1; i--) {
-    if (String(rows[i][0]) === projectId) { sheet.deleteRow(i + 1); return { id: projectId }; }
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === projectId) {
+      sheet.getRange(i + 1, 6).setValue('deleted');
+      return { id: projectId };
+    }
   }
   throw new Error('Project not found: ' + projectId);
+}
+
+function softDeleteIssuesByProject(projectId) {
+  const sheet = getSheet('Issues');
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][1]) === projectId && String(rows[i][4]) !== 'deleted') {
+      sheet.getRange(i + 1, 5).setValue('deleted');
+    }
+  }
+}
+
+function getDeletedCounts() {
+  const projData  = getSheet('Projects').getDataRange().getValues();
+  const issueData = getSheet('Issues').getDataRange().getValues();
+  const projects  = projData.slice(1).filter(r => r[0] && String(r[5]) === 'deleted').length;
+  const issues    = issueData.slice(1).filter(r => r[0] && String(r[4]) === 'deleted').length;
+  return { projects, issues };
 }
 
 function updateProjectCounts(projectId) {
@@ -222,7 +244,7 @@ function getIssues(projectId) {
   if (data.length <= 1) return [];
   return data.slice(1)
     .map(rowToIssue)
-    .filter(i => i.id && i.projectId === projectId)
+    .filter(i => i.id && i.projectId === projectId && i.status !== 'deleted')
     .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
@@ -275,9 +297,9 @@ function updateIssue(projectId, issueId, data) {
 function deleteIssue(projectId, issueId) {
   const sheet = getSheet('Issues');
   const rows  = sheet.getDataRange().getValues();
-  for (let i = rows.length - 1; i >= 1; i--) {
+  for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === issueId && String(rows[i][1]) === projectId) {
-      sheet.deleteRow(i + 1);
+      sheet.getRange(i + 1, 5).setValue('deleted');
       updateProjectCounts(projectId);
       return { id: issueId };
     }

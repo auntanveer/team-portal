@@ -83,3 +83,7 @@ async function deleteNote(projectId, noteId) {
 async function getReportData() {
   return apiGet({ action: 'getReportData' });
 }
+
+async function getDeletedCounts() {
+  return apiGet({ action: 'getDeletedCounts' });
+}
