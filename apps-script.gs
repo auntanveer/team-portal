@@ -105,8 +105,30 @@ function getProjects() {
   const sheet = getSheet('Projects');
   const data  = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
+
+  // Count issues live from the Issues sheet so cards are always accurate
+  const issueSheet = getSheet('Issues');
+  const issueData  = issueSheet.getDataRange().getValues();
+  const counts = {};
+  if (issueData.length > 1) {
+    issueData.slice(1).forEach(row => {
+      const pid    = String(row[1] || '');
+      const status = String(row[4] || 'open');
+      if (!pid) return;
+      if (!counts[pid]) counts[pid] = { open: 0, resolved: 0 };
+      if (status === 'open') counts[pid].open++;
+      else if (status === 'resolved') counts[pid].resolved++;
+    });
+  }
+
   return data.slice(1)
-    .map(rowToProject)
+    .map(row => {
+      const p = rowToProject(row);
+      const c = counts[p.id] || { open: 0, resolved: 0 };
+      p.openIssues     = c.open;
+      p.resolvedIssues = c.resolved;
+      return p;
+    })
     .filter(p => p.id)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
@@ -225,6 +247,7 @@ function addIssue(projectId, data) {
 function updateIssue(projectId, issueId, data) {
   const sheet = getSheet('Issues');
   const rows  = sheet.getDataRange().getValues();
+  const now   = new Date().toISOString();
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]) === issueId && String(rows[i][1]) === projectId) {
       const wasResolved = rows[i][4] === 'resolved';
