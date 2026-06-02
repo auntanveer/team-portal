@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Repository
+
+Remote: https://github.com/auntanveer/tictactoe (GitHub account: `auntanveer`)
+All work should be committed and pushed to this repo to maintain version history.
+
 ## Project Overview
 
 A single-file Tic Tac Toe game (`tictactoe.html`). No build system, no dependencies — open directly in a browser to run.
