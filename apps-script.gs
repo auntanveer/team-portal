@@ -105,7 +105,23 @@ function rowToProject(row) {
   };
 }
 
+function autoFillMissingIds() {
+  const sheet = getSheet('Projects');
+  const data  = sheet.getDataRange().getValues();
+  const now   = new Date().toISOString();
+  for (let i = 1; i < data.length; i++) {
+    const hasId   = data[i][0] && String(data[i][0]).trim();
+    const hasName = data[i][1] && String(data[i][1]).trim();
+    if (!hasId && hasName) {
+      sheet.getRange(i + 1, 1).setValue(makeId());
+      if (!data[i][7]) sheet.getRange(i + 1, 8).setValue(now);
+      if (!data[i][5]) sheet.getRange(i + 1, 6).setValue('active');
+    }
+  }
+}
+
 function getProjects() {
+  autoFillMissingIds();
   const sheet = getSheet('Projects');
   const data  = sheet.getDataRange().getValues();
   if (data.length <= 1) return [];
