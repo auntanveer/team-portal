@@ -26,17 +26,50 @@ function getSheet(name) {
   return sheet;
 }
 
+// Google Sheets auto-converts date strings into Date objects.
+// This converts them back to YYYY-MM-DD for date fields, ISO string for timestamps.
+function cellToDate(val) {
+  if (!val) return '';
+  if (val instanceof Date) {
+    const y = val.getFullYear();
+    const m = String(val.getMonth() + 1).padStart(2, '0');
+    const d = String(val.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + d;
+  }
+  return String(val);
+}
+
+function cellToTs(val) {
+  if (!val) return '';
+  if (val instanceof Date) return val.toISOString();
+  return String(val);
+}
+
 function rowToProject(row) {
-  const obj = {};
-  PROJECT_COLS.forEach((h, i) => obj[h] = row[i] !== undefined ? String(row[i]) : '');
-  obj.resources = obj.resources ? obj.resources.split(',').map(r => r.trim()).filter(Boolean) : [];
-  return obj;
+  return {
+    id:          String(row[0] || ''),
+    name:        String(row[1] || ''),
+    description: String(row[2] || ''),
+    startDate:   cellToDate(row[3]),
+    endDate:     cellToDate(row[4]),
+    status:      String(row[5] || 'active'),
+    resources:   row[6] ? String(row[6]).split(',').map(r => r.trim()).filter(Boolean) : [],
+    createdAt:   cellToTs(row[7])
+  };
 }
 
 function rowToIssue(row) {
-  const obj = {};
-  ISSUE_COLS.forEach((h, i) => obj[h] = row[i] !== undefined ? String(row[i]) : '');
-  return obj;
+  return {
+    id:          String(row[0] || ''),
+    projectId:   String(row[1] || ''),
+    title:       String(row[2] || ''),
+    description: String(row[3] || ''),
+    status:      String(row[4] || 'open'),
+    resolution:  String(row[5] || ''),
+    assignedTo:  String(row[6] || ''),
+    createdAt:   cellToTs(row[7]),
+    resolvedAt:  cellToTs(row[8])
+  };
 }
 
 function makeId() {
