@@ -1,7 +1,7 @@
 // Paste your deployed Apps Script Web App URL here
 // (Extensions → Apps Script → Deploy → Manage deployments → copy Web app URL)
-//const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsZWRZB2tlp4SCXNolEqyvH4LplaVMtGFG49WVSV2CTHekr94FmxMouaD9MZWBgAlydA/exec';
-const SCRIPT_URL = 'https://script.google.com/a/macros/hlbb.hongleong.com.my/s/AKfycbz5Nq_LtmzRzI-HLeC-uJn1PY2xd60Hf_Nc9w0KmIFqT3VOCfokHlBK6j4fVb6yqlP2ew/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsZWRZB2tlp4SCXNolEqyvH4LplaVMtGFG49WVSV2CTHekr94FmxMouaD9MZWBgAlydA/exec';
+//const SCRIPT_URL = 'https://script.google.com/a/macros/hlbb.hongleong.com.my/s/AKfycbz5Nq_LtmzRzI-HLeC-uJn1PY2xd60Hf_Nc9w0KmIFqT3VOCfokHlBK6j4fVb6yqlP2ew/exec';
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 async function apiGet(params) {

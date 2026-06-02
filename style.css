@@ -172,7 +172,7 @@ nav {
 
 .search-wrap input {
   width: 100%;
-  padding: 0.55rem 0.9rem 0.55rem 2.25rem;
+  padding: 0.55rem 0.9rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--bg-card);
@@ -182,18 +182,6 @@ nav {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .search-wrap input:focus { outline: none; border-color: var(--purple); box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
-
-.search-icon {
-  position: absolute;
-  left: 0.6rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--dim);
-  display: flex;
-  align-items: center;
-  pointer-events: none;
-  line-height: 1;
-}
 
 select.filter-select {
   padding: 0.55rem 0.9rem;
