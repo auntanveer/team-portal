@@ -426,6 +426,75 @@ function confirmDeleteIssue(projectId, issueId) {
   });
 }
 
+// ─── Issues Report ────────────────────────────────────────────────────────────
+async function loadIssuesReport() {
+  showView('issues-report');
+  document.getElementById('issues-report-wrap').innerHTML = '<div class="loading">Loading…</div>';
+  try {
+    state.reportData = await getReportData();
+    populateIssueReportProjectFilter(state.reportData);
+    renderIssuesReportTable();
+  } catch (err) {
+    document.getElementById('issues-report-wrap').innerHTML = '<div class="loading">Failed to load.</div>';
+    console.error(err);
+  }
+}
+
+function populateIssueReportProjectFilter(reportData) {
+  const sel = document.getElementById('ir-project-filter');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">All Projects</option>' +
+    reportData.map(d => `<option value="${escapeHtml(d.project.id)}">${escapeHtml(d.project.name)}</option>`).join('');
+  if (cur) sel.value = cur;
+}
+
+function renderIssuesReportTable() {
+  if (!state.reportData) return;
+  const projectFilter  = document.getElementById('ir-project-filter').value;
+  const statusFilter   = document.getElementById('ir-status-filter').value;
+  const priorityFilter = document.getElementById('ir-priority-filter').value;
+
+  const filtered = state.reportData
+    .filter(d => !projectFilter || d.project.id === projectFilter)
+    .map(d => ({
+      project: d.project,
+      issues: d.issues.filter(i =>
+        (!statusFilter   || i.status   === statusFilter) &&
+        (!priorityFilter || (i.priority || 'medium') === priorityFilter)
+      )
+    }))
+    .filter(d => d.issues.length > 0);
+
+  const wrap = document.getElementById('issues-report-wrap');
+
+  if (filtered.length === 0) {
+    wrap.innerHTML = '<div class="empty-state" style="padding:3rem;"><span class="empty-icon">&#128202;</span><p>No issues match your filters.</p></div>';
+    return;
+  }
+
+  const rows = filtered.flatMap(d =>
+    d.issues.map((issue, idx) => `
+      <tr>
+        ${idx === 0 ? `<td rowspan="${d.issues.length}" class="ir-project-cell"><strong>${escapeHtml(d.project.name)}</strong></td>` : ''}
+        <td>${escapeHtml(issue.title)}</td>
+        <td><span class="badge badge-${issue.status}">${statusLabel(issue.status)}</span></td>
+        <td><span class="badge badge-${issue.priority || 'medium'}">${(issue.priority || 'medium').charAt(0).toUpperCase() + (issue.priority || 'medium').slice(1)}</span></td>
+        <td>${escapeHtml(issue.assignedTo || '—')}</td>
+        <td>${formatDate(issue.dueDate) || '—'}</td>
+      </tr>`)
+  );
+
+  wrap.innerHTML = `
+    <div class="ir-table-wrap">
+      <table class="ir-table">
+        <thead><tr>
+          <th>Project</th><th>Issue</th><th>Status</th><th>Priority</th><th>Assigned To</th><th>Due Date</th>
+        </tr></thead>
+        <tbody>${rows.join('')}</tbody>
+      </table>
+    </div>`;
+}
+
 // ─── Reports ──────────────────────────────────────────────────────────────────
 async function loadReports() {
   showView('reports');
@@ -543,7 +612,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const a = e.target.closest('[data-view]');
     if (!a) return;
     e.preventDefault();
-    a.dataset.view === 'reports' ? loadReports() : loadDashboard();
+    if (a.dataset.view === 'reports') loadReports();
+    else if (a.dataset.view === 'issues-report') loadIssuesReport();
+    else loadDashboard();
   });
 
   document.getElementById('btn-new-project').addEventListener('click', () => openProjectForm(null));
@@ -621,17 +692,26 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-cancel-issue').addEventListener('click', () => loadProjectDetail(state.currentProjectId));
   document.getElementById('btn-cancel-issue-2').addEventListener('click', () => loadProjectDetail(state.currentProjectId));
 
+  // Issues Report
+  document.getElementById('btn-refresh-issues-report').addEventListener('click', loadIssuesReport);
+  document.getElementById('ir-project-filter').addEventListener('change', renderIssuesReportTable);
+  document.getElementById('ir-status-filter').addEventListener('change', renderIssuesReportTable);
+  document.getElementById('ir-priority-filter').addEventListener('change', renderIssuesReportTable);
+
   // Reports
   document.getElementById('btn-refresh-reports').addEventListener('click', loadReports);
   document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
 
   // Initial route
   const hash = window.location.hash.replace('#', '');
-  hash === 'reports' ? loadReports() : loadDashboard();
+  if (hash === 'reports') loadReports();
+  else if (hash === 'issues-report') loadIssuesReport();
+  else loadDashboard();
 });
 
 window.addEventListener('hashchange', () => {
   const hash = window.location.hash.replace('#', '');
   if (hash === 'reports' && state.currentView !== 'reports') loadReports();
+  else if (hash === 'issues-report' && state.currentView !== 'issues-report') loadIssuesReport();
   else if ((!hash || hash === 'dashboard') && state.currentView !== 'dashboard') loadDashboard();
 });
