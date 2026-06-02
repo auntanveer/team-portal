@@ -37,17 +37,9 @@
         <div class="dash-stat-value" id="ds-active">—</div>
         <div class="dash-stat-label">Active</div>
       </div>
-      <div class="dash-stat red">
-        <div class="dash-stat-value" id="ds-overdue">—</div>
-        <div class="dash-stat-label">Overdue</div>
-      </div>
-      <div class="dash-stat amber">
-        <div class="dash-stat-value" id="ds-open">—</div>
-        <div class="dash-stat-label">Open Issues</div>
-      </div>
       <div class="dash-stat green">
-        <div class="dash-stat-value" id="ds-resolved">—</div>
-        <div class="dash-stat-label">Resolved Issues</div>
+        <div class="dash-stat-value" id="ds-completed">—</div>
+        <div class="dash-stat-label">Completed</div>
       </div>
       <div class="dash-stat grey dash-stat-clickable" id="ds-deleted-tile" title="View deleted items">
         <div class="dash-stat-value" id="ds-deleted">—</div>
@@ -241,6 +233,20 @@
           <option value="low">Low</option>
         </select>
         <button class="btn btn-ghost" id="btn-refresh-issues-report">&#8635; Refresh</button>
+      </div>
+    </div>
+    <div class="dashboard-stats" id="issues-stats">
+      <div class="dash-stat amber">
+        <div class="dash-stat-value" id="is-open">—</div>
+        <div class="dash-stat-label">Open</div>
+      </div>
+      <div class="dash-stat green">
+        <div class="dash-stat-value" id="is-resolved">—</div>
+        <div class="dash-stat-label">Resolved</div>
+      </div>
+      <div class="dash-stat grey">
+        <div class="dash-stat-value" id="is-deleted">—</div>
+        <div class="dash-stat-label">Deleted</div>
       </div>
     </div>
     <div id="issues-report-wrap">

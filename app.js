@@ -111,15 +111,11 @@ async function loadDashboard() {
 }
 
 function renderDashboardStats(projects, deleted = { projects: 0, issues: 0 }) {
-  const active   = projects.filter(p => p.status === 'active').length;
-  const overdue  = projects.filter(p => isOverdue(p)).length;
-  const open     = projects.reduce((s, p) => s + (p.openIssues || 0), 0);
-  const resolved = projects.reduce((s, p) => s + (p.resolvedIssues || 0), 0);
-  document.getElementById('ds-active').textContent   = active;
-  document.getElementById('ds-overdue').textContent  = overdue;
-  document.getElementById('ds-open').textContent     = open;
-  document.getElementById('ds-resolved').textContent = resolved;
-  document.getElementById('ds-deleted').textContent  = deleted.projects + deleted.issues;
+  const active     = projects.filter(p => p.status === 'active').length;
+  const completed  = projects.filter(p => p.status === 'completed').length;
+  document.getElementById('ds-active').textContent    = active;
+  document.getElementById('ds-completed').textContent = completed;
+  document.getElementById('ds-deleted').textContent   = deleted.projects + deleted.issues;
 }
 
 function populateMemberFilter(projects) {
@@ -491,13 +487,22 @@ async function loadIssuesReport() {
   showView('issues-report');
   document.getElementById('issues-report-wrap').innerHTML = '<div class="loading">Loading…</div>';
   try {
-    state.reportData = await getReportData();
-    populateIssueReportProjectFilter(state.reportData);
+    const [reportData, deletedCounts] = await Promise.all([getReportData(), getDeletedCounts()]);
+    state.reportData = reportData;
+    populateIssueReportProjectFilter(reportData);
+    renderIssueStats(reportData, deletedCounts);
     renderIssuesReportTable();
   } catch (err) {
     document.getElementById('issues-report-wrap').innerHTML = '<div class="loading">Failed to load.</div>';
     console.error(err);
   }
+}
+
+function renderIssueStats(reportData, deletedCounts) {
+  const all = reportData.flatMap(d => d.issues);
+  document.getElementById('is-open').textContent     = all.filter(i => i.status === 'open').length;
+  document.getElementById('is-resolved').textContent = all.filter(i => i.status === 'resolved').length;
+  document.getElementById('is-deleted').textContent  = deletedCounts.issues;
 }
 
 function populateIssueReportProjectFilter(reportData) {
