@@ -1,6 +1,6 @@
 // Paste your deployed Apps Script Web App URL here
 // (Extensions → Apps Script → Deploy → Manage deployments → copy Web app URL)
-const SCRIPT_URL = 'PASTE_YOUR_APPS_SCRIPT_URL_HERE';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzsZWRZB2tlp4SCXNolEqyvH4LplaVMtGFG49WVSV2CTHekr94FmxMouaD9MZWBgAlydA/exec';
 
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
